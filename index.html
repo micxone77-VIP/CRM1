@@ -623,6 +623,16 @@ async function refreshAll(){
   // Sync sheet data into local arrays for rendering
   waLog    = parseSheetData(wl||[]);
   campaigns= parseCampaigns(camp||[]);
+  // Load campaign players and merge
+  const cpRows = await apiGet('Campaign_Players');
+  if(cpRows&&cpRows.length>1){
+    const hIdx=findHeaderRow(cpRows,'campaign','username');
+    cpRows.slice(hIdx+1).filter(r=>r[0]).forEach(r=>{
+      const cId=String(r[0]||'').trim();
+      const camp=campaigns.find(c=>c.id===cId);
+      if(camp) camp.players.push({user:r[2],tier:r[3],status:r[4],converted:r[5],added:r[6]});
+    });
+  }
   renderTargets(); renderScores(); renderKPI(); renderChurn();
   renderBday(); renderBonus(); renderWALog(waLog); renderCampaigns();
 }
@@ -639,11 +649,12 @@ function parseSheetData(rows){
 
 function parseCampaigns(rows){
   if(!rows||rows.length<2) return [];
-  const H=rows[0];
+  // Find header row
+  const hIdx=findHeaderRow(rows,'campaign','name','festival');
   const campMap={};
-  rows.slice(1).filter(r=>r[0]).forEach(r=>{
+  rows.slice(hIdx+1).filter(r=>r[0]).forEach(r=>{
     const id=String(r[0]||'').trim();
-    if(!id) return;
+    if(!id||id==='Campaign ID') return;
     if(!campMap[id]) campMap[id]={id,name:r[1],fest:r[2],start:r[3],end:r[4],tier:r[5],offer:r[6],notes:r[7],created:r[8],status:r[9],players:[]};
   });
   return Object.values(campMap);
@@ -652,7 +663,22 @@ function parseCampaigns(rows){
 // ══════════════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════════════
-function fc(headers,...names){ for(const n of names){ const i=headers.findIndex(h=>h&&h.toLowerCase().replace(/\s/g,'').includes(n.toLowerCase().replace(/\s/g,''))); if(i>=0)return i; } return -1; }
+function fc(headers,...names){
+  for(const n of names){
+    const i=headers.findIndex(h=>h&&String(h).toLowerCase().replace(/[^a-z0-9]/g,'').includes(n.toLowerCase().replace(/[^a-z0-9]/g,'')));
+    if(i>=0)return i;
+  }
+  return -1;
+}
+function findHeaderRow(rows,...cols){
+  for(let i=0;i<Math.min(rows.length,8);i++){
+    const rowStr=rows[i].map(h=>String(h||'').toLowerCase().replace(/[^a-z0-9]/g,''));
+    if(cols.every(col=>rowStr.some(h=>h.includes(col.toLowerCase().replace(/[^a-z0-9]/g,''))))){
+      return i;
+    }
+  }
+  return 0;
+}
 function tierBadge(t){ t=(t||'').toUpperCase(); if(t.includes('DIAMOND'))return`<span class="badge bd">💎 ${t}</span>`; if(t.includes('PLATINUM'))return`<span class="badge bp">⬡ ${t}</span>`; if(t.includes('GOLD'))return`<span class="badge bg_">★ ${t}</span>`; if(t.includes('BLACK'))return`<span class="badge bb">◆ ${t}</span>`; return`<span class="badge">${t}</span>`; }
 function sBar(val,max=100){ const n=parseFloat(val)||0; const c=n>=85?'var(--green)':n>=70?'var(--amber)':n>=50?'var(--accent)':'var(--red)'; return`<div class="sbar"><div class="strack"><div class="sfill" style="width:${Math.min(100,(n/max*100)).toFixed(0)}%;background:${c}"></div></div><span class="snum" style="color:${c}">${n.toFixed(1)}</span></div>`; }
 function dTag(d){ const n=parseInt(d); if(isNaN(n))return`<span class="dtag" style="background:var(--surface2);color:var(--muted)">${d||'—'}</span>`; const bg=n<=7?'rgba(63,185,80,.15)':n<=14?'rgba(210,153,34,.15)':n<=30?'rgba(210,100,20,.15)':'rgba(248,81,73,.15)'; const fg=n<=7?'var(--green)':n<=14?'var(--amber)':n<=30?'#e06020':'var(--red)'; return`<span class="dtag" style="background:${bg};color:${fg}">${n}d</span>`; }
@@ -676,12 +702,14 @@ function toggleSort(page,col){
 // ══════════════════════════════════════════════════════════════
 function renderTargets(){
   const rows=DATA.targets; if(!rows||rows.length<2){document.getElementById('tTable').innerHTML=noData('🎯');return;}
-  const H=rows[0];
+  // Daily_Targets has 2 title rows then header — find header row dynamically
+  const hIdx=findHeaderRow(rows,'username','tier','score','predicted');
+  const H=rows[hIdx];
   const iUser=fc(H,'username','login'),iTier=fc(H,'tier'),iScore=fc(H,'vipscore','score'),
         iPred=fc(H,'predicted','pred'),iBand=fc(H,'band','priority'),
-        iDays=fc(H,'daysinactive','days'),iDep=fc(H,'deposit'),iWL=fc(H,'win','loss'),
-        iAct=fc(H,'action','today'),iPhone=fc(H,'phone');
-  let data=rows.slice(1).filter(r=>r[iUser]);
+        iDays=fc(H,'daysinactive','days'),iDep=fc(H,'deposit','totaldep'),iWL=fc(H,'win','loss','winloss'),
+        iAct=fc(H,'action','today','recommended'),iPhone=fc(H,'phone');
+  let data=rows.slice(hIdx+1).filter(r=>r[iUser]&&String(r[iUser]).trim()!='');
   const tierF=document.getElementById('tTierFilter').value;
   data=data.filter(r=>matchTier(r[iTier],tierF));
   const {col,dir}=SORT.targets;
@@ -721,7 +749,14 @@ function bandTag(pred){ const p=parseFloat(pred); if(p>=85)return`<span class="b
 let allScoreRows=[],scoreHeaders=[];
 function renderScores(){
   const rows=DATA.scores; if(!rows||rows.length<2){document.getElementById('sTable').innerHTML=noData('🧠');return;}
-  scoreHeaders=rows[0]; allScoreRows=rows.slice(1).filter(r=>r[1]);
+  // Score_Engine has title rows, legend rows — find real header row
+  const hIdx=findHeaderRow(rows,'username','tier','vipscore','predicted');
+  scoreHeaders=rows[hIdx];
+  // Skip legend rows (rows where col 1 is empty or contains 'LEGEND')
+  allScoreRows=rows.slice(hIdx+1).filter(r=>{
+    const u=String(r[1]||'').trim();
+    return u && !u.toUpperCase().includes('LEGEND') && !u.toUpperCase().includes('SCORE LEGEND') && u!='Username';
+  });
   const iScore=fc(scoreHeaders,'vipscore');
   const elite=allScoreRows.filter(r=>parseFloat(r[iScore]||0)>=85).length;
   const strong=allScoreRows.filter(r=>{const s=parseFloat(r[iScore]||0);return s>=70&&s<85;}).length;
@@ -908,12 +943,21 @@ function calcAndRenderKPI(){
 // ══════════════════════════════════════════════════════════════
 function renderChurn(){
   const rows=DATA.churn; if(!rows||rows.length<2){document.getElementById('cList').innerHTML=noData('🚨');return;}
-  const H=rows[0];
-  const iPri=fc(H,'priority','#'),iUser=fc(H,'username','login'),iTier=fc(H,'tier'),
-        iDays=fc(H,'days'),iRisk=fc(H,'risk'),iDep=fc(H,'deposit'),iAct=fc(H,'action','recommended');
+  // Churn_Alerts: try to find header row, if not found use positional columns
+  const hIdx=findHeaderRow(rows,'username','tier','risk','days');
+  let iPri,iUser,iTier,iDays,iRisk,iDep,iAct;
+  if(hIdx>=0 && rows[hIdx].some(h=>String(h||'').toLowerCase().includes('username'))){
+    const H=rows[hIdx];
+    iPri=fc(H,'priority','#','rank'); iUser=fc(H,'username','login'); iTier=fc(H,'tier');
+    iDays=fc(H,'days'); iRisk=fc(H,'risk'); iDep=fc(H,'deposit'); iAct=fc(H,'action','recommended');
+  } else {
+    // Churn_Alerts has no header — use fixed positions from Apps Script output
+    // col: 0=#, 1=blank, 2=username, 3=tier, 4=days, 5=risk, 6=deposit, 7=?, 8=?, 9=action, 10=status
+    iPri=0; iUser=2; iTier=3; iDays=4; iRisk=5; iDep=6; iAct=9;
+  }
   const tierF=document.getElementById('cTierFilter').value;
   const riskF=document.getElementById('cRiskFilter').value;
-  let data=rows.slice(1).filter(r=>r[iUser]).filter(r=>matchTier(r[iTier],tierF));
+  let data=rows.filter(r=>r[iUser]&&String(r[iUser]).trim()&&typeof r[iUser]==='string').filter(r=>matchTier(r[iTier],tierF));
   if(riskF!=='ALL') data=data.filter(r=>String(r[iRisk]||'').toUpperCase().includes(riskF));
   const crit=data.filter(r=>String(r[iRisk]||'').includes('CRITICAL')||String(r[iRisk]||'').includes('WINNER')).length;
   const dorm=data.filter(r=>String(r[iRisk]||'').includes('DORMANT')).length;
@@ -1014,20 +1058,23 @@ function clearWA(){ document.getElementById('waUser').value=''; document.getElem
 // BIRTHDAYS
 // ══════════════════════════════════════════════════════════════
 function renderBday(){
-  // Merge sheet data + local data
+  // Birthday_Engine: try header row first, fallback to positional
   const sheetBday=[];
-  if(DATA.bday&&DATA.bday.length>1){
-    const H=DATA.bday[0];
-    const iUser=fc(H,'username','login'),iTier=fc(H,'tier'),iBday=fc(H,'birthday'),
-          iDays=fc(H,'daystobday','days'),iGift=fc(H,'gift'),iBudget=fc(H,'budget'),
-          iStatus=fc(H,'status');
-    DATA.bday.slice(1).forEach(r=>{
-      if(!r[iUser]) return;
-      sheetBday.push({user:r[iUser],tier:r[iTier],bday:r[iBday],daysLeft:calcDaysLeft(r[iBday]),gift:r[iGift],budget:r[iBudget],status:r[iStatus],source:'sheet'});
-    });
+  if(DATA.bday&&DATA.bday.length>0){
+    const hIdx=findHeaderRow(DATA.bday,'username','birthday','tier');
+    let iUser,iTier,iBday,iDays,iGift,iBudget,iStatus,iNotes;
+    if(DATA.bday[hIdx]&&DATA.bday[hIdx].some(h=>String(h||'').toLowerCase().includes('username'))){
+      const H=DATA.bday[hIdx];
+      iUser=fc(H,'username','login'); iTier=fc(H,'tier'); iBday=fc(H,'birthday');
+      iDays=fc(H,'daystobday','days'); iGift=fc(H,'gift'); iBudget=fc(H,'budget');
+      iStatus=fc(H,'status'); iNotes=fc(H,'notes');
+      DATA.bday.slice(hIdx+1).forEach(r=>{ if(!r[iUser]) return; sheetBday.push({user:r[iUser],tier:r[iTier],bday:r[iBday]?String(r[iBday]):'',daysLeft:calcDaysLeft(r[iBday]),gift:r[iGift],budget:r[iBudget],status:r[iStatus],notes:r[iNotes],source:'sheet'}); });
+    } else {
+      // No header row — positional: 0=username,1=tier,2=birthday,4=gifttype,5=budget,6=status,7=notes
+      DATA.bday.forEach(r=>{ if(!r[0]||typeof r[0]!=='string') return; sheetBday.push({user:r[0],tier:r[1],bday:r[2]?String(r[2]):'',daysLeft:calcDaysLeft(r[2]),gift:r[4],budget:r[5],status:r[6],notes:r[7],source:'sheet'}); });
+    }
   }
-  const localBday=bdayData.map(b=>({...b,daysLeft:calcDaysLeft(b.bday),source:'local'}));
-  const all=[...sheetBday,...localBday].sort((a,b)=>(parseInt(a.daysLeft)||999)-(parseInt(b.daysLeft)||999));
+  const all=[...sheetBday].sort((a,b)=>(parseInt(a.daysLeft)||999)-(parseInt(b.daysLeft)||999));
   const tierF=document.getElementById('bdayTier').value;
   const filtered=all.filter(b=>matchTier(b.tier,tierF));
   const thisMonth=filtered.filter(b=>parseInt(b.daysLeft)>=0&&parseInt(b.daysLeft)<=30).length;
@@ -1053,10 +1100,17 @@ function renderBday(){
     </div>`;
   }).join(''):`<div class="empty"><div class="empty-icon">🎂</div><p>No birthdays found.</p></div>`;
 }
-function calcDaysLeft(bdayStr){
-  if(!bdayStr) return 999;
+function calcDaysLeft(bdayVal){
+  if(!bdayVal) return 999;
   try{
-    const d=new Date(bdayStr); if(isNaN(d)) return 999;
+    let d;
+    if(bdayVal instanceof Date) d=bdayVal;
+    else {
+      const s=String(bdayVal).trim();
+      if(!s||s==='—'||s.includes('IF(')) return 999;
+      d=new Date(s);
+    }
+    if(isNaN(d)) return 999;
     const today=new Date(); today.setHours(0,0,0,0);
     let next=new Date(today.getFullYear(),d.getMonth(),d.getDate());
     if(next<today) next.setFullYear(today.getFullYear()+1);
@@ -1158,11 +1212,12 @@ async function deleteCampaign(campId){
 function renderBonus(){
   const all=[];
   if(DATA.bonus&&DATA.bonus.length>1){
-    const H=DATA.bonus[0];
+    const hIdx=findHeaderRow(DATA.bonus,'username','month','bonus');
+    const H=DATA.bonus[hIdx];
     const iNum=fc(H,'#'),iMonth=fc(H,'month'),iDate=fc(H,'date'),iUser=fc(H,'username','login'),
-          iTier=fc(H,'tier'),iType=fc(H,'bonustype','type','bonus type'),iAmt=fc(H,'bonus(rm)','bonus'),
+          iTier=fc(H,'tier'),iType=fc(H,'bonustype','type','bonustype'),iAmt=fc(H,'bonus','rm','amount'),
           iWL=fc(H,'win','loss'),iStatus=fc(H,'status'),iRem=fc(H,'remarks','notes');
-    DATA.bonus.slice(1).forEach((r,idx)=>{
+    DATA.bonus.slice(hIdx+1).forEach((r,idx)=>{
       if(!r[iUser]) return;
       all.push({rowIndex:idx+2,num:r[iNum],month:r[iMonth],date:r[iDate],user:r[iUser],tier:r[iTier],type:r[iType],amount:r[iAmt],wl:r[iWL],status:r[iStatus],remarks:r[iRem]});
     });
