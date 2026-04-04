@@ -583,58 +583,103 @@ function loadCfgUI(){
 // ══════════════════════════════════════════════════════════════
 // API — READ & WRITE via Apps Script Web App
 // ══════════════════════════════════════════════════════════════
+// API — READ & WRITE
+// Apps Script requires redirect:follow + no-cors workaround
+// ══════════════════════════════════════════════════════════════
 async function apiGet(tab){
-  if(!CFG.apiUrl){ setStatus(false,'No API URL — paste Web App URL in Setup'); return null; }
+  if(!CFG.apiUrl) return null;
   try{
-    const res = await fetch(`${CFG.apiUrl}?tab=${encodeURIComponent(tab)}`);
-    const json = await res.json();
-    if(!json.ok){ console.error('API read error:',json.error); return null; }
+    // Apps Script Web App redirects — must follow redirects
+    const res = await fetch(
+      `${CFG.apiUrl}?tab=${encodeURIComponent(tab)}`,
+      { redirect: 'follow' }
+    );
+    const text = await res.text();
+    // Apps Script sometimes returns HTML error page
+    if(text.trim().startsWith('<')){
+      console.error('apiGet got HTML instead of JSON for tab:', tab);
+      return null;
+    }
+    const json = JSON.parse(text);
+    if(!json.ok){ console.error('API error for',tab,':',json.error); return null; }
     return json.data;
-  }catch(e){ console.error('apiGet error:',e); return null; }
+  }catch(e){
+    console.error('apiGet failed for',tab,':',e.message);
+    return null;
+  }
 }
 
 async function apiPost(payload){
-  if(!CFG.apiUrl){ alert('No API URL set. Go to Setup and paste your Apps Script Web App URL.'); return null; }
+  if(!CFG.apiUrl){ alert('No API URL — go to Setup and paste your Web App URL.'); return null; }
   try{
+    // Apps Script POST: no Content-Type header (avoids CORS preflight)
+    // Send as plain text — doPost reads e.postData.contents
     const res = await fetch(CFG.apiUrl, {
       method: 'POST',
+      redirect: 'follow',
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
-    if(!json.ok) console.error('API write error:',json.error);
-    return json;
-  }catch(e){ console.error('apiPost error:',e); return null; }
+    const text = await res.text();
+    if(text.trim().startsWith('<')){ console.error('apiPost got HTML error'); return {ok:false,error:'HTML response'}; }
+    return JSON.parse(text);
+  }catch(e){
+    console.error('apiPost failed:',e.message);
+    return {ok:false, error:e.message};
+  }
 }
 
-function setStatus(ok,msg){ document.getElementById('sDot').style.background=ok?'var(--green)':'var(--red)'; document.getElementById('sTxt').textContent=msg; }
+function setStatus(ok,msg){
+  document.getElementById('sDot').style.background=ok?'var(--green)':'var(--red)';
+  document.getElementById('sDot').style.animation=ok?'pulse 2s infinite':'none';
+  document.getElementById('sTxt').textContent=msg;
+}
+
+// Load tabs sequentially to avoid Apps Script rate limits
 async function refreshAll(){
-  if(!CFG.apiUrl){setStatus(false,'Paste Web App URL in Setup tab');return;}
+  if(!CFG.apiUrl){
+    setStatus(false,'Paste Apps Script Web App URL in ⚙️ Setup');
+    return;
+  }
   setStatus(false,'Connecting...');
-  const [t,s,k,c,b,bon,wl,camp] = await Promise.all([
-    apiGet(CFG.targets), apiGet(CFG.scores),
-    apiGet(CFG.kpi),     apiGet(CFG.churn),
-    apiGet(CFG.bday),    apiGet(CFG.bonus),
-    apiGet('WA_Log'),    apiGet('Campaigns'),
-  ]);
-  if(!t&&!s){setStatus(false,'Connection failed — check Web App URL in Setup');return;}
+
+  // Load core read-only tabs first (sequential — Apps Script rate limit safe)
+  DATA.targets = await apiGet(CFG.targets);
+  DATA.scores  = await apiGet(CFG.scores);
+  DATA.kpi     = await apiGet(CFG.kpi);
+  DATA.churn   = await apiGet(CFG.churn);
+  DATA.bday    = await apiGet(CFG.bday);
+  DATA.bonus   = await apiGet(CFG.bonus);
+
+  if(!DATA.targets && !DATA.scores){
+    setStatus(false,'Connection failed — check Web App URL and make sure it is deployed as Anyone can access');
+    return;
+  }
   setStatus(true,`Live • ${new Date().toLocaleTimeString()}`);
-  DATA.targets=t||[]; DATA.scores=s||[]; DATA.kpi=k||[];
-  DATA.churn=c||[];   DATA.bday=b||[];   DATA.bonus=bon||[];
-  // Sync sheet data into local arrays for rendering
-  waLog    = parseSheetData(wl||[]);
-  campaigns= parseCampaigns(camp||[]);
-  // Load campaign players and merge
-  const cpRows = await apiGet('Campaign_Players');
-  if(cpRows&&cpRows.length>1){
-    const hIdx=findHeaderRow(cpRows,'campaign','username');
-    cpRows.slice(hIdx+1).filter(r=>r[0]).forEach(r=>{
+
+  // Render core tabs immediately
+  renderTargets(); renderScores(); renderKPI(); renderChurn();
+  renderBday(); renderBonus();
+
+  // Load write tabs in background
+  const wl   = await apiGet('WA_Log');
+  const camp = await apiGet('Campaigns');
+  const cp   = await apiGet('Campaign_Players');
+
+  waLog     = parseSheetData(wl||[]);
+  campaigns = parseCampaigns(camp||[]);
+
+  // Merge campaign players
+  if(cp&&cp.length>1){
+    const hIdx=findHeaderRow(cp,'campaign','username');
+    cp.slice(hIdx+1).filter(r=>r[0]).forEach(r=>{
       const cId=String(r[0]||'').trim();
-      const camp=campaigns.find(c=>c.id===cId);
-      if(camp) camp.players.push({user:r[2],tier:r[3],status:r[4],converted:r[5],added:r[6]});
+      const found=campaigns.find(c=>c.id===cId);
+      if(found) found.players.push({user:r[2],tier:r[3],status:r[4],converted:r[5],added:r[6]});
     });
   }
-  renderTargets(); renderScores(); renderKPI(); renderChurn();
-  renderBday(); renderBonus(); renderWALog(waLog); renderCampaigns();
+
+  renderWALog(waLog);
+  renderCampaigns();
 }
 
 function parseSheetData(rows){
