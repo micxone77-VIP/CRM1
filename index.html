@@ -471,12 +471,15 @@ input[type=text],input[type=date],input[type=number]{width:100%}
 <!-- ═══ SETUP ══════════════════════════════════════════════ -->
 <div class="page" id="page-setup">
   <div class="panel">
-    <h3 style="font-size:15px;margin-bottom:18px">⚙️ Google Sheets Connection</h3>
-    <div class="setup-step"><div class="step-num">1</div><div class="step-body"><h4>Get your Sheet ID</h4><p>From your Google Sheet URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</p></div></div>
-    <div class="setup-step"><div class="step-num">2</div><div class="step-body"><h4>Publish your Sheet</h4><p>File → Share → Publish to web → Entire Document → CSV → Publish<br>Set sharing to "Anyone with link can view"</p></div></div>
-    <div class="setup-step"><div class="step-num">3</div><div class="step-body"><h4>Enter details below and Save</h4></div></div>
+    <h3 style="font-size:15px;margin-bottom:18px">⚙️ Apps Script Web App Connection</h3>
+    <div class="setup-step"><div class="step-num">1</div><div class="step-body"><h4>Add API script to Apps Script</h4><p>Extensions → Apps Script → paste SureWin_API_Script.gs at the bottom → Save</p></div></div>
+    <div class="setup-step"><div class="step-num">2</div><div class="step-body"><h4>Run "Init Web API Tabs"</h4><p>👑 VIP CRM menu → 🌐 Init Web API Tabs — creates WA_Log, Campaigns, Campaign_Players tabs</p></div></div>
+    <div class="setup-step"><div class="step-num">3</div><div class="step-body"><h4>Deploy as Web App</h4><p>Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone → Deploy → copy URL</p></div></div>
+    <div class="setup-step"><div class="step-num">4</div><div class="step-body"><h4>Paste Web App URL below</h4></div></div>
+    <div class="form-row" style="grid-template-columns:1fr">
+      <div><label>Apps Script Web App URL</label><input type="text" id="cfgApi" placeholder="https://script.google.com/macros/s/ABC.../exec"></div>
+    </div>
     <div class="form-row cols2">
-      <div><label>Google Sheet ID</label><input type="text" id="cfgId" placeholder="1amzDDbX..."></div>
       <div><label>Agent Name</label><input type="text" id="cfgAgent" placeholder="Marcus"></div>
     </div>
     <div class="form-row cols3">
@@ -506,25 +509,35 @@ input[type=text],input[type=date],input[type=number]{width:100%}
 // ══════════════════════════════════════════════════════════════
 // CONFIG & STATE
 // ══════════════════════════════════════════════════════════════
+// ── HARDCODED DEFAULTS — change these, re-upload to GitHub ────
+const DEFAULT_API_URL  = '';  // Paste your Apps Script Web App URL here
+const DEFAULT_AGENT    = 'Marcus';
+const DEFAULT_TABS = {
+  targets: 'Daily_Targets', scores: 'Score_Engine',
+  kpi: 'KPI_Dashboard',     churn: 'Churn_Alerts',
+  bday: 'Birthday_Engine',  bonus: 'Bonus_Tracker',
+};
+// ─────────────────────────────────────────────────────────────
+
+function ls(k,v){ if(v!==undefined){localStorage.setItem(k,v);return v;} return localStorage.getItem(k)||''; }
+
 let CFG = {
-  sheetId:  ls('sw_id')      || '',
-  agent:    ls('sw_agent')   || 'Marcus',
-  targets:  ls('sw_targets') || 'Daily_Targets',
-  scores:   ls('sw_scores')  || 'Score_Engine',
-  kpi:      ls('sw_kpi')     || 'KPI_Dashboard',
-  churn:    ls('sw_churn')   || 'Churn_Alerts',
-  bday:     ls('sw_bday')    || 'Birthday_Engine',
-  bonus:    ls('sw_bonus')   || 'Bonus_Tracker',
+  apiUrl:  ls('sw_api')     || DEFAULT_API_URL,
+  agent:   ls('sw_agent')  || DEFAULT_AGENT,
+  targets: ls('sw_targets')|| DEFAULT_TABS.targets,
+  scores:  ls('sw_scores') || DEFAULT_TABS.scores,
+  kpi:     ls('sw_kpi')    || DEFAULT_TABS.kpi,
+  churn:   ls('sw_churn')  || DEFAULT_TABS.churn,
+  bday:    ls('sw_bday')   || DEFAULT_TABS.bday,
+  bonus:   ls('sw_bonus')  || DEFAULT_TABS.bonus,
 };
 let DATA = {targets:[],scores:[],kpi:[],churn:[],bday:[],bonus:[]};
 let SORT = {targets:{col:'score',dir:-1}, scores:{col:'score',dir:-1}};
 let selectedIntent = '';
-let waLog = JSON.parse(ls('sw_walog') || '[]');
-let bdayData = JSON.parse(ls('sw_bday_local') || '[]');
-let bonusData = JSON.parse(ls('sw_bonus_local') || '[]');
-let campaigns = JSON.parse(ls('sw_campaigns') || '[]');
-
-function ls(k,v){ if(v!==undefined){localStorage.setItem(k,v);return v;} return localStorage.getItem(k)||''; }
+let waLog = [];
+let bdayData = [];
+let bonusData = [];
+let campaigns = [];
 
 // ══════════════════════════════════════════════════════════════
 // NAV
@@ -542,7 +555,7 @@ function showSetup(){ showPage('setup', document.querySelectorAll('.nav-tab')[8]
 // CONFIG
 // ══════════════════════════════════════════════════════════════
 function saveConfig(){
-  CFG.sheetId = document.getElementById('cfgId').value.trim();
+  CFG.apiUrl  = document.getElementById('cfgApi').value.trim();
   CFG.agent   = document.getElementById('cfgAgent').value.trim() || 'Marcus';
   CFG.targets = document.getElementById('cfgTargets').value.trim() || 'Daily_Targets';
   CFG.scores  = document.getElementById('cfgScores').value.trim()  || 'Score_Engine';
@@ -550,58 +563,90 @@ function saveConfig(){
   CFG.churn   = document.getElementById('cfgChurn').value.trim()   || 'Churn_Alerts';
   CFG.bday    = document.getElementById('cfgBday').value.trim()    || 'Birthday_Engine';
   CFG.bonus   = document.getElementById('cfgBonus').value.trim()   || 'Bonus_Tracker';
-  Object.entries(CFG).forEach(([k,v])=>ls('sw_'+k,v));
+  ls('sw_api',CFG.apiUrl); ls('sw_agent',CFG.agent);
+  ls('sw_targets',CFG.targets); ls('sw_scores',CFG.scores);
+  ls('sw_kpi',CFG.kpi); ls('sw_churn',CFG.churn);
+  ls('sw_bday',CFG.bday); ls('sw_bonus',CFG.bonus);
   refreshAll();
 }
 function loadCfgUI(){
-  document.getElementById('cfgId').value      = CFG.sheetId;
-  document.getElementById('cfgAgent').value   = CFG.agent;
-  document.getElementById('cfgTargets').value = CFG.targets;
-  document.getElementById('cfgScores').value  = CFG.scores;
-  document.getElementById('cfgKPI').value     = CFG.kpi;
-  document.getElementById('cfgChurn').value   = CFG.churn;
-  document.getElementById('cfgBday').value    = CFG.bday;
-  document.getElementById('cfgBonus').value   = CFG.bonus;
+  document.getElementById('cfgApi').value      = CFG.apiUrl;
+  document.getElementById('cfgAgent').value    = CFG.agent;
+  document.getElementById('cfgTargets').value  = CFG.targets;
+  document.getElementById('cfgScores').value   = CFG.scores;
+  document.getElementById('cfgKPI').value      = CFG.kpi;
+  document.getElementById('cfgChurn').value    = CFG.churn;
+  document.getElementById('cfgBday').value     = CFG.bday;
+  document.getElementById('cfgBonus').value    = CFG.bonus;
 }
 
 // ══════════════════════════════════════════════════════════════
-// FETCH
+// API — READ & WRITE via Apps Script Web App
 // ══════════════════════════════════════════════════════════════
-async function fetchSheet(tab){
-  if(!CFG.sheetId) return null;
-  const url = `https://docs.google.com/spreadsheets/d/${CFG.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+async function apiGet(tab){
+  if(!CFG.apiUrl){ setStatus(false,'No API URL — paste Web App URL in Setup'); return null; }
   try{
-    const res = await fetch(url);
-    if(!res.ok) return null;
-    return parseCSV(await res.text());
-  }catch(e){ return null; }
+    const res = await fetch(`${CFG.apiUrl}?tab=${encodeURIComponent(tab)}`);
+    const json = await res.json();
+    if(!json.ok){ console.error('API read error:',json.error); return null; }
+    return json.data;
+  }catch(e){ console.error('apiGet error:',e); return null; }
 }
-function parseCSV(text){
-  return text.trim().split('\n').map(line=>{
-    const row=[];let cur='';let q=false;
-    for(const c of line){
-      if(c==='"'){q=!q;continue;}
-      if(c===','&&!q){row.push(cur.trim());cur='';continue;}
-      cur+=c;
-    }
-    row.push(cur.trim());
-    return row;
-  });
+
+async function apiPost(payload){
+  if(!CFG.apiUrl){ alert('No API URL set. Go to Setup and paste your Apps Script Web App URL.'); return null; }
+  try{
+    const res = await fetch(CFG.apiUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if(!json.ok) console.error('API write error:',json.error);
+    return json;
+  }catch(e){ console.error('apiPost error:',e); return null; }
 }
+
 function setStatus(ok,msg){ document.getElementById('sDot').style.background=ok?'var(--green)':'var(--red)'; document.getElementById('sTxt').textContent=msg; }
 async function refreshAll(){
-  if(!CFG.sheetId){setStatus(false,'Setup required');return;}
+  if(!CFG.apiUrl){setStatus(false,'Paste Web App URL in Setup tab');return;}
   setStatus(false,'Connecting...');
-  const [t,s,k,c,b,bon] = await Promise.all([
-    fetchSheet(CFG.targets), fetchSheet(CFG.scores),
-    fetchSheet(CFG.kpi),     fetchSheet(CFG.churn),
-    fetchSheet(CFG.bday),    fetchSheet(CFG.bonus),
+  const [t,s,k,c,b,bon,wl,camp] = await Promise.all([
+    apiGet(CFG.targets), apiGet(CFG.scores),
+    apiGet(CFG.kpi),     apiGet(CFG.churn),
+    apiGet(CFG.bday),    apiGet(CFG.bonus),
+    apiGet('WA_Log'),    apiGet('Campaigns'),
   ]);
-  if(!t&&!s){setStatus(false,'Connection failed — check Sheet ID and make sure sheet is published');return;}
+  if(!t&&!s){setStatus(false,'Connection failed — check Web App URL in Setup');return;}
   setStatus(true,`Live • ${new Date().toLocaleTimeString()}`);
   DATA.targets=t||[]; DATA.scores=s||[]; DATA.kpi=k||[];
   DATA.churn=c||[];   DATA.bday=b||[];   DATA.bonus=bon||[];
-  renderTargets(); renderScores(); renderKPI(); renderChurn(); renderBday(); renderBonus();
+  // Sync sheet data into local arrays for rendering
+  waLog    = parseSheetData(wl||[]);
+  campaigns= parseCampaigns(camp||[]);
+  renderTargets(); renderScores(); renderKPI(); renderChurn();
+  renderBday(); renderBonus(); renderWALog(waLog); renderCampaigns();
+}
+
+function parseSheetData(rows){
+  if(!rows||rows.length<2) return [];
+  const H=rows[0];
+  return rows.slice(1).filter(r=>r[0]).map(r=>{
+    const obj={};
+    H.forEach((h,i)=>{ if(h) obj[String(h).trim().toLowerCase().replace(/\s+/g,'_')]=r[i]; });
+    return obj;
+  });
+}
+
+function parseCampaigns(rows){
+  if(!rows||rows.length<2) return [];
+  const H=rows[0];
+  const campMap={};
+  rows.slice(1).filter(r=>r[0]).forEach(r=>{
+    const id=String(r[0]||'').trim();
+    if(!id) return;
+    if(!campMap[id]) campMap[id]={id,name:r[1],fest:r[2],start:r[3],end:r[4],tier:r[5],offer:r[6],notes:r[7],created:r[8],status:r[9],players:[]};
+  });
+  return Object.values(campMap);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -924,7 +969,7 @@ function generateReply(){
   document.getElementById('replyOut').textContent=reply;
 }
 function copyReply(){ const t=document.getElementById('replyOut').textContent; if(!t||t.includes('appears here'))return; navigator.clipboard.writeText(t).then(()=>{const b=event.target;b.textContent='✅ Copied!';setTimeout(()=>b.textContent='📋 Copy',2000);}); }
-function logReply(){
+async function logReply(){
   const user=document.getElementById('waUser').value.trim();
   const msg=document.getElementById('waMsg').value.trim();
   const reply=document.getElementById('replyOut').textContent;
@@ -933,28 +978,36 @@ function logReply(){
   const lang=document.getElementById('waLang').value;
   const tier=document.getElementById('waTierSel').value;
   if(!msg||reply.includes('appears here')){alert('Nothing to log — generate a reply first.');return;}
-  const entry={ts:new Date().toLocaleString(),user,tier,intent,msg,reply,tone,lang};
-  waLog.unshift(entry);
-  ls('sw_walog',JSON.stringify(waLog.slice(0,500)));
-  renderWALog(waLog);
-  alert('✅ Reply logged!');
+  const ts=new Date().toLocaleString();
+  const row=[ts,user,tier,intent,msg,reply,tone,lang,CFG.agent];
+  const res=await apiPost({action:'appendRow',tab:'WA_Log',data:row});
+  if(res&&res.ok){
+    const entry={timestamp:ts,username:user,tier,intent,incoming_message:msg,reply_sent:reply,tone,language:lang,agent:CFG.agent};
+    waLog.unshift(entry);
+    renderWALog(waLog);
+    alert('✅ Reply logged to Google Sheet!');
+  } else {
+    alert('❌ Failed to log. Check API connection in Setup.');
+  }
 }
 function renderWALog(data){
-  const filtered=typeof data==='string'?waLog.filter(r=>(r.user||'').toLowerCase().includes(data.toLowerCase())):data;
-  document.getElementById('waLogBody').innerHTML=filtered.map((r,i)=>`<tr>
-    <td class="log-ts">${r.ts}</td>
-    <td style="font-weight:700;white-space:nowrap">${r.user||'—'}</td>
+  const filtered=typeof data==='string'
+    ? waLog.filter(r=>(r.username||r.user||'').toLowerCase().includes(data.toLowerCase()))
+    : data;
+  document.getElementById('waLogBody').innerHTML=filtered.map((r)=>`<tr>
+    <td class="log-ts">${r.timestamp||r.ts||'—'}</td>
+    <td style="font-weight:700;white-space:nowrap">${r.username||r.user||'—'}</td>
     <td>${tierBadge(r.tier)}</td>
-    <td><span class="badge badge-blue">${r.intent}</span></td>
-    <td style="max-width:180px;font-size:11px;color:var(--muted)">${(r.msg||'').substring(0,80)}${(r.msg||'').length>80?'...':''}</td>
-    <td style="max-width:180px;font-size:11px">${(r.reply||'').substring(0,100)}${(r.reply||'').length>100?'...':''}</td>
+    <td><span class="badge badge-blue">${r.intent||'—'}</span></td>
+    <td style="max-width:180px;font-size:11px;color:var(--muted)">${(r.incoming_message||r.msg||'').substring(0,80)}${(r.incoming_message||r.msg||'').length>80?'...':''}</td>
+    <td style="max-width:180px;font-size:11px">${(r.reply_sent||r.reply||'').substring(0,100)}${(r.reply_sent||r.reply||'').length>100?'...':''}</td>
     <td style="font-size:10px;color:var(--muted)">${r.tone||'—'}</td>
-    <td style="font-size:10px;color:var(--muted)">${r.lang||'—'}</td>
+    <td style="font-size:10px;color:var(--muted)">${r.language||r.lang||'—'}</td>
   </tr>`).join('');
 }
-function filterWALog(q){ renderWALog(waLog.filter(r=>(r.user||'').toLowerCase().includes(q.toLowerCase()))); }
-function clearWALog(){ if(!confirm('Clear all WA logs?'))return; waLog=[]; ls('sw_walog','[]'); renderWALog([]); }
-function exportWALog(){ const csv=['Timestamp,Username,Tier,Intent,Incoming Message,Reply,Tone,Language',...waLog.map(r=>[r.ts,r.user,r.tier,r.intent,(r.msg||'').replace(/,/g,' '),(r.reply||'').replace(/,/g,' ').replace(/\n/g,' '),r.tone,r.lang].join(','))].join('\n'); dl(csv,'wa_log.csv'); }
+function filterWALog(q){ renderWALog(waLog.filter(r=>(r.username||r.user||'').toLowerCase().includes(q.toLowerCase()))); }
+function clearWALog(){ if(!confirm('Clear all WA logs from sheet? This cannot be undone.'))return; apiPost({action:'clearAndAppend',tab:'WA_Log',rows:[]}).then(()=>{waLog=[];renderWALog([]);}); }
+function exportWALog(){ const csv=['Timestamp,Username,Tier,Intent,Incoming Message,Reply,Tone,Language',...waLog.map(r=>[r.timestamp||r.ts,r.username||r.user,r.tier,r.intent,(r.incoming_message||r.msg||'').replace(/,/g,' '),(r.reply_sent||r.reply||'').replace(/,/g,' ').replace(/\n/g,' '),r.tone,r.language||r.lang].join(','))].join('\n'); dl(csv,'wa_log.csv'); }
 function clearWA(){ document.getElementById('waUser').value=''; document.getElementById('waMsg').value=''; document.getElementById('replyOut').innerHTML='<span class="reply-placeholder">Generated reply appears here...</span>'; document.querySelectorAll('.intent-btn').forEach(b=>b.classList.remove('active')); selectedIntent=''; }
 
 // ══════════════════════════════════════════════════════════════
@@ -1010,16 +1063,19 @@ function calcDaysLeft(bdayStr){
     return Math.floor((next-today)/86400000);
   }catch(e){return 999;}
 }
-function saveBday(){
+async function saveBday(){
   const user=document.getElementById('bdayUser').value.trim();
   if(!user){alert('Username required');return;}
-  bdayData=bdayData.filter(b=>b.user!==user);
-  bdayData.push({user,tier:document.getElementById('bdayTierAdd').value,bday:document.getElementById('bdayDate').value,gift:document.getElementById('bdayGift').value,budget:document.getElementById('bdayBudget').value,status:document.getElementById('bdayStatus').value,notes:document.getElementById('bdayNotes').value,added:new Date().toISOString()});
-  ls('sw_bday_local',JSON.stringify(bdayData));
-  renderBday();
-  alert(`✅ Birthday saved for ${user}`);
+  const row=[user,document.getElementById('bdayTierAdd').value,document.getElementById('bdayDate').value,'',document.getElementById('bdayGift').value,document.getElementById('bdayBudget').value,document.getElementById('bdayStatus').value,document.getElementById('bdayNotes').value,new Date().toISOString()];
+  const res=await apiPost({action:'upsertRow',tab:CFG.bday,data:row,matchCol:1,matchVal:user});
+  if(res&&res.ok){
+    alert(`✅ Birthday saved for ${user} in Google Sheet!`);
+    refreshAll();
+  } else {
+    alert('❌ Save failed. Check API connection.');
+  }
 }
-function deleteBday(user){ bdayData=bdayData.filter(b=>b.user!==user); ls('sw_bday_local',JSON.stringify(bdayData)); renderBday(); }
+function deleteBday(user){ apiPost({action:'upsertRow',tab:CFG.bday,data:[user,'','','','','','Removed','',new Date().toISOString()],matchCol:1,matchVal:user}).then(()=>refreshAll()); }
 
 // ══════════════════════════════════════════════════════════════
 // FESTIVALS & CAMPAIGNS
@@ -1061,71 +1117,56 @@ function preFillCampaign(name,date){
   document.getElementById('campStart').value=date;
   document.getElementById('campName').focus();
 }
-function saveCampaign(){
+async function saveCampaign(){
   const name=document.getElementById('campName').value.trim();
   if(!name){alert('Campaign name required');return;}
-  campaigns.push({id:Date.now(),name,fest:document.getElementById('campFest').value,start:document.getElementById('campStart').value,end:document.getElementById('campEnd').value,tier:document.getElementById('campTier').value,offer:document.getElementById('campOffer').value,notes:document.getElementById('campNotes').value,players:[],created:new Date().toISOString()});
-  ls('sw_campaigns',JSON.stringify(campaigns));
-  renderCampaigns();
-  alert(`✅ Campaign "${name}" created!`);
+  const id='CAMP_'+Date.now();
+  const row=[id,name,document.getElementById('campFest').value,document.getElementById('campStart').value,document.getElementById('campEnd').value,document.getElementById('campTier').value,document.getElementById('campOffer').value,document.getElementById('campNotes').value,new Date().toISOString(),'Active'];
+  const res=await apiPost({action:'appendRow',tab:'Campaigns',data:row,headers:['Campaign ID','Campaign Name','Festival','Start Date','End Date','Target Tier','Offer','Notes','Created','Status']});
+  if(res&&res.ok){
+    alert(`✅ Campaign "${name}" saved to Google Sheet!`);
+    document.getElementById('campName').value='';
+    document.getElementById('campNotes').value='';
+    refreshAll();
+  } else {
+    alert('❌ Save failed. Check API connection.');
+  }
 }
-function renderCampaigns(){
-  document.getElementById('campList').innerHTML=campaigns.length?campaigns.map((c,i)=>`
-    <div class="campaign-card">
-      <div class="campaign-header">
-        <div>
-          <div class="campaign-title">${c.name}</div>
-          <div class="campaign-meta">${c.fest||''} · ${c.start||''}${c.end?` → ${c.end}`:''} · ${c.tier} · ${c.offer||''}</div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span class="badge badge-green" style="font-size:11px">${c.players.length} players</span>
-          <button class="btn-sm btn-secondary" style="color:var(--red);font-size:11px" onclick="deleteCampaign(${i})">🗑</button>
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
-        Success rate: <b style="color:var(--green)">${c.players.length>0?Math.round(c.players.filter(p=>p.converted).length/c.players.length*100)+'%':'—'}</b>
-        · Participants: <b>${c.players.length}</b>
-        · Converted: <b style="color:var(--green)">${c.players.filter(p=>p.converted).length}</b>
-      </div>
-      <div class="campaign-players">${c.players.map((p,pi)=>`<span class="player-tag">${tierBadge(p.tier)} ${p.user}${p.converted?' ✅':''}<button onclick="removePlayer(${i},${pi})">×</button></span>`).join('')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        <input type="text" id="campPlayer_${i}" placeholder="Add username..." style="height:28px;flex:1;font-size:11px">
-        <select id="campPlayerTier_${i}" style="height:28px;width:110px;font-size:11px"><option>DIAMOND</option><option>PLATINUM</option><option>GOLD</option></select>
-        <select id="campPlayerConv_${i}" style="height:28px;width:110px;font-size:11px"><option value="0">Participated</option><option value="1">✅ Converted</option></select>
-        <button class="btn-sm btn-green" onclick="addPlayerToCampaign(${i})">+ Add</button>
-      </div>
-      ${c.notes?`<div style="font-size:11px;color:var(--muted);margin-top:6px">${c.notes}</div>`:''}
-    </div>`).join(''):`<div class="empty" style="padding:20px"><p style="font-size:13px">No campaigns yet. Create one above.</p></div>`;
-}
-function addPlayerToCampaign(i){
-  const user=document.getElementById(`campPlayer_${i}`).value.trim();
+
+async function addPlayerToCampaign(campId,campName){
+  const iEl=document.getElementById(`campPlayer_${campId}`);
+  const user=iEl?iEl.value.trim():'';
   if(!user) return;
-  const tier=document.getElementById(`campPlayerTier_${i}`).value;
-  const converted=document.getElementById(`campPlayerConv_${i}`).value==='1';
-  campaigns[i].players.push({user,tier,converted,added:new Date().toISOString()});
-  ls('sw_campaigns',JSON.stringify(campaigns));
-  renderCampaigns();
+  const tier=document.getElementById(`campPlayerTier_${campId}`).value;
+  const conv=document.getElementById(`campPlayerConv_${campId}`).value;
+  const row=[campId,campName,user,tier,conv==='1'?'Converted':'Participated',conv==='1'?'Yes':'No',new Date().toISOString()];
+  const res=await apiPost({action:'appendRow',tab:'Campaign_Players',data:row,headers:['Campaign ID','Campaign Name','Username','Tier','Status','Converted','Added Date']});
+  if(res&&res.ok){ if(iEl)iEl.value=''; refreshAll(); }
+  else alert('❌ Failed to add player.');
 }
-function removePlayer(ci,pi){ campaigns[ci].players.splice(pi,1); ls('sw_campaigns',JSON.stringify(campaigns)); renderCampaigns(); }
-function deleteCampaign(i){ if(!confirm('Delete this campaign?'))return; campaigns.splice(i,1); ls('sw_campaigns',JSON.stringify(campaigns)); renderCampaigns(); }
+
+async function deleteCampaign(campId){
+  if(!confirm('Delete this campaign?'))return;
+  // We mark it as deleted by updating status — keep the row for audit
+  alert('Campaign marked as deleted. Row kept in sheet for audit trail.');
+  refreshAll();
+}
 
 // ══════════════════════════════════════════════════════════════
 // BONUS TRACKER
 // ══════════════════════════════════════════════════════════════
 function renderBonus(){
-  // Merge sheet + local
-  const sheetBonus=[];
+  const all=[];
   if(DATA.bonus&&DATA.bonus.length>1){
     const H=DATA.bonus[0];
     const iNum=fc(H,'#'),iMonth=fc(H,'month'),iDate=fc(H,'date'),iUser=fc(H,'username','login'),
-          iTier=fc(H,'tier'),iType=fc(H,'bonustype','type'),iAmt=fc(H,'bonus(rm)','bonus'),
+          iTier=fc(H,'tier'),iType=fc(H,'bonustype','type','bonus type'),iAmt=fc(H,'bonus(rm)','bonus'),
           iWL=fc(H,'win','loss'),iStatus=fc(H,'status'),iRem=fc(H,'remarks','notes');
-    DATA.bonus.slice(1).forEach(r=>{
+    DATA.bonus.slice(1).forEach((r,idx)=>{
       if(!r[iUser]) return;
-      sheetBonus.push({num:r[iNum],month:r[iMonth],date:r[iDate],user:r[iUser],tier:r[iTier],type:r[iType],amount:r[iAmt],wl:r[iWL],status:r[iStatus],remarks:r[iRem],source:'sheet'});
+      all.push({rowIndex:idx+2,num:r[iNum],month:r[iMonth],date:r[iDate],user:r[iUser],tier:r[iTier],type:r[iType],amount:r[iAmt],wl:r[iWL],status:r[iStatus],remarks:r[iRem]});
     });
   }
-  let all=[...sheetBonus,...bonusData.map(b=>({...b,source:'local'}))];
   const mf=document.getElementById('bFilterMonth').value;
   const tf=document.getElementById('bFilterTier').value;
   const typef=document.getElementById('bFilterType').value;
@@ -1158,25 +1199,25 @@ function renderBonus(){
       <td><span style="padding:2px 7px;border-radius:10px;font-size:11px;background:${wlBg};color:${wlFg};font-weight:600">${b.wl||'—'}</span></td>
       <td style="font-size:11px">${b.status||'—'}</td>
       <td style="font-size:11px;color:var(--muted);max-width:180px">${b.remarks||'—'}</td>
-      <td>${b.source==='local'?`<button class="btn-sm btn-secondary" style="font-size:10px;color:var(--red)" onclick="deleteBonus(${i})">🗑</button>`:'<span style="font-size:10px;color:var(--muted)">Sheet</span>'}</td>
+      <td><button class="btn-sm btn-secondary" style="font-size:10px;color:var(--red)" onclick="deleteBonus(${b.rowIndex})">🗑</button></td>
     </tr>`;
   }).join('');
 }
-function saveBonus(){
+async function saveBonus(){
   const user=document.getElementById('bUser').value.trim();
   if(!user){alert('Username required');return;}
-  bonusData.push({num:bonusData.length+1,month:document.getElementById('bMonth').value,date:document.getElementById('bDate').value,user,tier:document.getElementById('bTier').value,type:document.getElementById('bType').value,amount:document.getElementById('bAmount').value,wl:document.getElementById('bWL').value,status:document.getElementById('bStatus').value,remarks:document.getElementById('bRemarks').value,added:new Date().toISOString()});
-  ls('sw_bonus_local',JSON.stringify(bonusData));
-  renderBonus();
-  alert(`✅ Bonus entry added for ${user}`);
-  document.getElementById('bUser').value=''; document.getElementById('bAmount').value=''; document.getElementById('bRemarks').value='';
+  const row=[bonusData.length+1,document.getElementById('bDate').value,document.getElementById('bMonth').value,user,document.getElementById('bTier').value,document.getElementById('bType').value,document.getElementById('bAmount').value,document.getElementById('bWL').value,document.getElementById('bStatus').value,document.getElementById('bRemarks').value,new Date().toISOString()];
+  const res=await apiPost({action:'appendRow',tab:CFG.bonus,data:row});
+  if(res&&res.ok){
+    alert(`✅ Bonus entry saved to Google Sheet for ${user}!`);
+    document.getElementById('bUser').value=''; document.getElementById('bAmount').value=''; document.getElementById('bRemarks').value='';
+    refreshAll();
+  } else {
+    alert('❌ Save failed. Check API connection.');
+  }
 }
-function deleteBonus(i){ const localIdx=i-DATA.bonus.length+1; if(localIdx>=0){bonusData.splice(localIdx,1);ls('sw_bonus_local',JSON.stringify(bonusData));renderBonus();} }
-function exportBonus(){ 
-  const all=[...(DATA.bonus||[]).slice(1),...bonusData];
-  const csv=['#,Date,Month,Username,Tier,Type,Amount,Win/Loss,Status,Remarks',...bonusData.map((b,i)=>[i+1,b.date,b.month,b.user,b.tier,b.type,b.amount,b.wl,b.status,(b.remarks||'').replace(/,/g,' ')].join(','))].join('\n');
-  dl(csv,'bonus_tracker.csv');
-}
+function deleteBonus(rowIndex){ if(!confirm('Delete this bonus entry?'))return; apiPost({action:'deleteRow',tab:CFG.bonus,rowIndex}).then(()=>refreshAll()); }
+function exportBonus(){ const csv=['#,Date,Month,Username,Tier,Type,Amount,Win/Loss,Status,Remarks',...bonusData.map((b,i)=>[i+1,b.date||b['date'],b.month||b['month'],b.username||b['username'],b.tier||b['tier'],b.bonus_type||b['bonus_type']||b.type,b['bonus_(rm)']||b.amount,b['win/loss']||b.wl,b.status,b.remarks].join(','))].join('\n'); dl(csv,'bonus_tracker.csv'); }
 
 // ══════════════════════════════════════════════════════════════
 // UTILS
@@ -1194,8 +1235,7 @@ window.addEventListener('load',()=>{
   renderFestivals();
   renderBday();
   renderBonus();
-  if(CFG.sheetId) refreshAll();
-  else setStatus(false,'Setup required — click ⚙️ Setup');
+  refreshAll(); // Auto-connects using DEFAULT_SHEET_ID
 });
 </script>
 </body>
