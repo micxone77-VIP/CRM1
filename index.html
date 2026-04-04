@@ -743,7 +743,7 @@ function findHeaderRow(rows,...cols){
 function tierBadge(t){ t=(t||'').toUpperCase(); if(t.includes('DIAMOND'))return`<span class="badge bd">💎 ${t}</span>`; if(t.includes('PLATINUM'))return`<span class="badge bp">⬡ ${t}</span>`; if(t.includes('GOLD'))return`<span class="badge bg_">★ ${t}</span>`; if(t.includes('BLACK'))return`<span class="badge bb">◆ ${t}</span>`; return`<span class="badge">${t}</span>`; }
 function sBar(val,max=100){ const n=parseFloat(val)||0; const c=n>=85?'var(--green)':n>=70?'var(--amber)':n>=50?'var(--accent)':'var(--red)'; return`<div class="sbar"><div class="strack"><div class="sfill" style="width:${Math.min(100,(n/max*100)).toFixed(0)}%;background:${c}"></div></div><span class="snum" style="color:${c}">${n.toFixed(1)}</span></div>`; }
 function dTag(d){ const n=parseInt(d); if(isNaN(n))return`<span class="dtag" style="background:var(--surface2);color:var(--muted)">${d||'—'}</span>`; const bg=n<=7?'rgba(63,185,80,.15)':n<=14?'rgba(210,153,34,.15)':n<=30?'rgba(210,100,20,.15)':'rgba(248,81,73,.15)'; const fg=n<=7?'var(--green)':n<=14?'var(--amber)':n<=30?'#e06020':'var(--red)'; return`<span class="dtag" style="background:${bg};color:${fg}">${n}d</span>`; }
-function wlFmt(v){ const n=parseFloat((v||'').replace(/,/g,'')); if(isNaN(n))return'—'; const fmt=Math.abs(n).toLocaleString('en-MY',{maximumFractionDigits:0}); return n<0?`<span style="color:var(--green);font-weight:600">-RM${fmt}</span>`:`<span style="color:var(--red);font-weight:600">+RM${fmt}</span>`; }
+function wlFmt(v){ const s=typeof v==='number'?v:parseFloat(String(v||'').replace(/,/g,'')); if(isNaN(s))return'—'; const fmt=Math.abs(s).toLocaleString('en-MY',{maximumFractionDigits:0}); return s<0?`<span style="color:var(--green);font-weight:600">-RM${fmt}</span>`:`<span style="color:var(--red);font-weight:600">+RM${fmt}</span>`; }
 function rmFmt(v){ const n=parseFloat((v||'').replace(/,/g,'')); return isNaN(n)?'—':'RM '+n.toLocaleString('en-MY',{maximumFractionDigits:0}); }
 function matchTier(val,filter){ if(filter==='ALL')return true; return (val||'').toUpperCase().includes(filter); }
 
@@ -780,7 +780,7 @@ function renderTargets(){
     return(av-bv)*dir;
   });
   const elite=data.filter(r=>parseFloat(r[iPred]||0)>=85).length;
-  const urgent=data.filter(r=>parseFloat((r[iWL]||'').replace(/,/g,''))>20000).length;
+  const urgent=data.filter(r=>{ const v=r[iWL]; const n=typeof v==='number'?v:parseFloat(String(v||'').replace(/,/g,'')); return n>20000; }).length;
   document.getElementById('tStats').innerHTML=`
     <div class="stat-card"><div class="stat-label">Targets Today</div><div class="stat-value c-accent">${data.length}</div></div>
     <div class="stat-card"><div class="stat-label">💎 Elite (≥85%)</div><div class="stat-value c-green">${elite}</div></div>
@@ -1211,6 +1211,35 @@ const FESTIVALS_2026=[
   {code:'XMAS',name:'Christmas',date:'2026-12-25',cat:'Commercial',color:'var(--green)'},
   {code:'NYE',name:'New Year Eve',date:'2026-12-31',cat:'Core',color:'var(--accent)'},
 ];
+function renderCampaigns(){
+  document.getElementById('campList').innerHTML=campaigns.length?campaigns.map((c)=>`
+    <div class="campaign-card">
+      <div class="campaign-header">
+        <div>
+          <div class="campaign-title">${c.name}</div>
+          <div class="campaign-meta">${c.fest||''} · ${c.start||''}${c.end?' → '+c.end:''} · ${c.tier||'ALL'} · ${c.offer||''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="badge badge-green" style="font-size:11px">${(c.players||[]).length} players</span>
+          <button class="btn-sm btn-secondary" style="color:var(--red);font-size:11px" onclick="deleteCampaign('${c.id}')">🗑</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Success rate: <b style="color:var(--green)">${(c.players||[]).length>0?Math.round((c.players||[]).filter(p=>p.converted==='Yes'||p.converted===true).length/(c.players||[]).length*100)+'%':'—'}</b>
+        · Participants: <b>${(c.players||[]).length}</b>
+        · Converted: <b style="color:var(--green)">${(c.players||[]).filter(p=>p.converted==='Yes'||p.converted===true).length}</b>
+      </div>
+      <div class="campaign-players">${(c.players||[]).map((p)=>`<span class="player-tag">${tierBadge(p.tier||'')} ${p.user||''}${(p.converted==='Yes'||p.converted===true)?' ✅':''}</span>`).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" id="campPlayer_${c.id}" placeholder="Add username..." style="height:28px;flex:1;font-size:11px">
+        <select id="campPlayerTier_${c.id}" style="height:28px;width:110px;font-size:11px"><option>DIAMOND</option><option>PLATINUM</option><option>GOLD</option></select>
+        <select id="campPlayerConv_${c.id}" style="height:28px;width:110px;font-size:11px"><option value="0">Participated</option><option value="1">✅ Converted</option></select>
+        <button class="btn-sm btn-green" onclick="addPlayerToCampaign('${c.id}','${c.name}')">+ Add</button>
+      </div>
+      ${c.notes?`<div style="font-size:11px;color:var(--muted);margin-top:6px">${c.notes}</div>`:''}
+    </div>`).join(''):`<div class="empty" style="padding:20px"><p style="font-size:13px">No campaigns yet. Create one above.</p></div>`;
+}
+
 function renderFestivals(){
   const today=new Date(); today.setHours(0,0,0,0);
   document.getElementById('festList').innerHTML=FESTIVALS_2026.map(f=>{
