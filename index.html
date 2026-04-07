@@ -1302,11 +1302,12 @@ async function deleteCampaign(campId){
 function renderBonus(){
   const all=[];
   if(DATA.bonus&&DATA.bonus.length>1){
-    const hIdx=findHeaderRow(DATA.bonus,'username','month','bonus');
+    // Bonus_Tracker: row 1='#', row 2=actual headers with username,month,bonus
+    const hIdx=findHeaderRow(DATA.bonus,'username','bonus','month');
     const H=DATA.bonus[hIdx];
     const iNum=fc(H,'#'),iMonth=fc(H,'month'),iDate=fc(H,'date'),iUser=fc(H,'username','login'),
-          iTier=fc(H,'tier'),iType=fc(H,'bonustype','type','bonustype'),iAmt=fc(H,'bonus','rm','amount'),
-          iWL=fc(H,'win','loss'),iStatus=fc(H,'status'),iRem=fc(H,'remarks','notes');
+          iTier=fc(H,'tier'),iType=fc(H,'bonustype','bonustype','type'),iAmt=fc(H,'bonus(rm)','bonus','amount'),
+          iWL=fc(H,'win','loss','winloss'),iStatus=fc(H,'status'),iRem=fc(H,'remarks','approvedby','notes');
     DATA.bonus.slice(hIdx+1).forEach((r,idx)=>{
       if(!r[iUser]) return;
       all.push({rowIndex:idx+2,num:r[iNum],month:r[iMonth],date:r[iDate],user:r[iUser],tier:r[iTier],type:r[iType],amount:r[iAmt],wl:r[iWL],status:r[iStatus],remarks:r[iRem]});
@@ -1351,7 +1352,13 @@ function renderBonus(){
 async function saveBonus(){
   const user=document.getElementById('bUser').value.trim();
   if(!user){alert('Username required');return;}
-  const row=[bonusData.length+1,document.getElementById('bDate').value,document.getElementById('bMonth').value,user,document.getElementById('bTier').value,document.getElementById('bType').value,document.getElementById('bAmount').value,document.getElementById('bWL').value,document.getElementById('bStatus').value,document.getElementById('bRemarks').value,new Date().toISOString()];
+  // Match sheet column order: #,Month,Date,VIP_ID,Username,Tier,BonusType,Bonus(RM),Win/Loss,,,,,Remarks
+  const now = new Date();
+  const dateStr = document.getElementById('bDate').value || now.toISOString().split('T')[0];
+  const row=['',document.getElementById('bMonth').value,dateStr,'',user,
+    document.getElementById('bTier').value,document.getElementById('bType').value,
+    document.getElementById('bAmount').value,document.getElementById('bWL').value,
+    '','','','',document.getElementById('bRemarks').value];
   const res=await apiPost({action:'appendRow',tab:CFG.bonus,data:row});
   if(res&&res.ok){
     alert(`✅ Bonus entry saved to Google Sheet for ${user}!`);
