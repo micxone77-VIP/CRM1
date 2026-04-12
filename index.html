@@ -1590,21 +1590,21 @@ function renderVIPIntel(){
       const rowBg=pri.includes('P1')?'rgba(248,81,73,.08)':pri.includes('P2')?'rgba(210,153,34,.08)':'';
       const score=typeof r[iScore]==='number'?r[iScore]:parseFloat(r[iScore])||0;
       const sBg=score>=85?'var(--green)':score>=70?'var(--amber)':score>=50?'#e65100':'var(--red)';
-      return\`<tr style="background:\${rowBg}">
-        <td style="color:var(--muted)">\${i+1}</td>
-        <td style="font-weight:700">\${r[iUser]||'—'}</td>
-        <td>\${tierBadge(r[iTier])}</td>
-        <td style="font-size:11px">\${rmFmt(r[iDep])}</td>
-        <td>\${wlFmt(r[iWL])}</td>
-        <td style="text-align:center">\${r[iDeps]||'—'}</td>
-        <td style="font-size:11px;color:var(--muted)">\${r[iFreq]||'—'}</td>
-        <td style="text-align:center">\${r[iDays]!==undefined&&r[iDays]!==''?r[iDays]+'d':'—'}</td>
-        <td style="font-size:11px">\${r[iStatus]||'—'}</td>
-        <td><span style="background:\${sBg};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">\${score||'—'}</span></td>
-        <td style="text-align:center;font-size:11px">\${r[iPred]||'—'}%</td>
-        <td><span class="badge \${pri.includes('P1')?'badge-red':pri.includes('P2')?'badge-amber':pri.includes('Active')?'badge-green':'badge-muted'}" style="font-size:10px">\${pri}</span></td>
-        <td style="font-size:11px;color:var(--accent)">\${r[iPhone]||'—'}</td>
-      </tr>\`;
+      return`<tr style="background:${rowBg}">
+        <td style="color:var(--muted)">${i+1}</td>
+        <td style="font-weight:700">${r[iUser]||'—'}</td>
+        <td>${tierBadge(r[iTier])}</td>
+        <td style="font-size:11px">${rmFmt(r[iDep])}</td>
+        <td>${wlFmt(r[iWL])}</td>
+        <td style="text-align:center">${r[iDeps]||'—'}</td>
+        <td style="font-size:11px;color:var(--muted)">${r[iFreq]||'—'}</td>
+        <td style="text-align:center">${r[iDays]!==undefined&&r[iDays]!==''?r[iDays]+'d':'—'}</td>
+        <td style="font-size:11px">${r[iStatus]||'—'}</td>
+        <td><span style="background:${sBg};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">${score||'—'}</span></td>
+        <td style="text-align:center;font-size:11px">${r[iPred]||'—'}%</td>
+        <td><span class="badge ${pri.includes('P1')?'badge-red':pri.includes('P2')?'badge-amber':pri.includes('Active')?'badge-green':'badge-muted'}" style="font-size:10px">${pri}</span></td>
+        <td style="font-size:11px;color:var(--accent)">${r[iPhone]||'—'}</td>
+      </tr>`;
     }).join('')}</tbody>
   </table></div>`;
 }
