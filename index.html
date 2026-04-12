@@ -590,7 +590,7 @@ input[type=text],input[type=date],input[type=number]{width:100%}
 // CONFIG & STATE
 // ══════════════════════════════════════════════════════════════
 // ── HARDCODED DEFAULTS — change these, re-upload to GitHub ────
-const DEFAULT_API_URL  = 'https://script.google.com/macros/s/AKfycbz459XmbWn93tlmVonfmT4_cxpjq6jFE4OYaFZHB7vV3BzIs9OTNsxRvyCM5jnKZXQt/exec';  // Paste your Apps Script Web App URL here
+const DEFAULT_API_URL  = 'https://script.google.com/macros/s/AKfycbz459XmbWn93tlmVonfmT4_cxpjq6jFE4OYaFZHB7vV3Bzls9OTNsxRvyCM5jnKZXQt/exec';  // Paste your Apps Script Web App URL here
 const DEFAULT_AGENT    = 'Marcus';
 const DEFAULT_TABS = {
   targets: 'Daily_Targets', scores: 'Score_Engine',
@@ -671,7 +671,7 @@ function loadCfgUI(){
 // ══════════════════════════════════════════════════════════════
 
 // JSONP — works cross-origin without CORS headers needed
-function jsonpGet(url, timeoutMs=30000){
+function jsonpGet(url, timeoutMs=8000){
   return new Promise((resolve, reject)=>{
     const cbName = 'cb_'+Math.random().toString(36).slice(2);
     const script = document.createElement('script');
@@ -689,7 +689,7 @@ async function apiGet(tab){
   const url = `${CFG.apiUrl}?tab=${encodeURIComponent(tab)}`;
   // Try JSONP first (works from GitHub Pages — no CORS needed)
   try{
-    const json = await jsonpGet(url, 30000);
+    const json = await jsonpGet(url, 8000);
     if(json && json.ok){ console.log('✅ JSONP loaded:',tab,'rows:',json.data.length); return json.data; }
     console.error('JSONP API error ['+tab+']:',json&&json.error);
     return null;
@@ -738,52 +738,46 @@ async function refreshAll(){
     document.getElementById('tTable').innerHTML='';
     return;
   }
-  setStatus(false,'Loading Daily Targets...');
-  DATA.targets = await apiGet(CFG.targets);
-  if(DATA.targets){ renderTargets(); setStatus(false,'Loading VIP Scores...'); }
+  setStatus(true,'🔄 Loading data...');
 
-  DATA.scores = await apiGet(CFG.scores);
-  if(DATA.scores){ renderScores(); setStatus(false,'Loading KPI...'); }
+  // Load all tabs in PARALLEL — no blocking, each renders as soon as it arrives
+  const loadTab = async (key, cfgKey, renderFn, label) => {
+    try {
+      const data = await apiGet(cfgKey);
+      if(data){ window['DATA'][key]=data; renderFn(); setStatus(true, '✅ '+label+' loaded'); }
+    } catch(e) { console.warn('Failed to load '+label, e); }
+  };
 
-  DATA.kpi = await apiGet(CFG.kpi);
-  if(DATA.kpi){ renderKPI(); setStatus(false,'Loading Churn Alerts...'); }
+  // Fire all loads simultaneously
+  await Promise.all([
+    loadTab('targets', CFG.targets, renderTargets,  'Daily Targets'),
+    loadTab('scores',  CFG.scores,  renderScores,   'VIP Scores'),
+    loadTab('kpi',     CFG.kpi,     renderKPI,       'KPI'),
+    loadTab('churn',   CFG.churn,   renderChurn,    'Churn Alerts'),
+    loadTab('bday',    CFG.bday,    renderBday,      'Birthdays'),
+    loadTab('bonus',   CFG.bonus,   renderBonus,    'Bonus Tracker'),
+  ]);
 
-  DATA.churn = await apiGet(CFG.churn);
-  if(DATA.churn){ renderChurn(); setStatus(false,'Loading Birthdays...'); }
-
-  DATA.bday = await apiGet(CFG.bday);
-  if(DATA.bday){ renderBday(); setStatus(false,'Loading Bonus Tracker...'); }
-
-  DATA.bonus = await apiGet(CFG.bonus);
-  if(DATA.bonus){ renderBonus(); }
+  // Load WA + Campaigns
+  try {
+    const waLog = await apiGet('WA_Log');
+    renderWALog(waLog);
+  } catch(e){}
+  try {
+    const campaigns = []; const cp = [];
+    const cRaw = await apiGet('Campaigns');
+    const pRaw = await apiGet('Campaign_Players');
+    if(cRaw && cRaw.length>1){ cRaw.slice(1).forEach(r=>{ if(r[0]) campaigns.push({id:r[0],name:r[1],festival:r[2],start:r[3],end:r[4],tier:r[5],offer:r[6],notes:r[7],created:r[8],status:r[9],players:[]}); }); }
+    if(pRaw && pRaw.length>1){ pRaw.slice(1).forEach(r=>{ if(!r[2]) return; const found=campaigns.find(c=>c.id===r[0]); if(found) found.players.push({user:r[2],tier:r[3],status:r[4],converted:r[5],added:r[6]}); }); }
+    renderCampaigns();
+  } catch(e){}
 
   if(!DATA.targets && !DATA.scores){
-    setStatus(false,'❌ No data — check: 1) Web App URL correct 2) Deployed as "Anyone" 3) Open URL in browser to test');
-    return;
-  }
-  setStatus(true,`Live • ${new Date().toLocaleTimeString()}`);
-
-  // Load write tabs in background (non-blocking)
-  setStatus(true,`Live • loading logs...`);
-  const wl   = await apiGet('WA_Log');
-  const camp = await apiGet('Campaigns');
-  const cp   = await apiGet('Campaign_Players');
-
-  waLog     = parseSheetData(wl||[]);
-  campaigns = parseCampaigns(camp||[]);
-
-  // Merge campaign players
-  if(cp&&cp.length>1){
-    const hIdx=findHeaderRow(cp,'campaign','username');
-    cp.slice(hIdx+1).filter(r=>r[0]).forEach(r=>{
-      const cId=String(r[0]||'').trim();
-      const found=campaigns.find(c=>c.id===cId);
-      if(found) found.players.push({user:r[2],tier:r[3],status:r[4],converted:r[5],added:r[6]});
-    });
+    setStatus(false,'❌ API not responding — check URL in Setup');
+  } else {
+    setStatus(true,'✅ Live');
   }
 
-  renderWALog(waLog);
-  renderCampaigns();
   // Load intelligence data in background
   loadIntelligenceData();
 }
@@ -1754,16 +1748,7 @@ window.addEventListener('load',()=>{
   renderBday();
   renderBonus();
   refreshAll();
-  // If no API URL saved or still using default, navigate to Setup automatically
-  if(!CFG.apiUrl || CFG.apiUrl.includes('AKfycbz459Xmb')) {
-    setTimeout(()=>{
-      // Find setup button and click it
-      const allBtns = document.querySelectorAll('.nav-tab');
-      const setupBtn = Array.from(allBtns).find(b=>b.textContent.includes('Setup'));
-      if(setupBtn) showPage('setup', setupBtn);
-    }, 200);
-  }
-});
+
 </script>
 </body>
 </html>
