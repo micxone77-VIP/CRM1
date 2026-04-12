@@ -599,7 +599,12 @@ const DEFAULT_TABS = {
 };
 // ─────────────────────────────────────────────────────────────
 
-function ls(k,v){ if(v!==undefined){localStorage.setItem(k,v);return v;} return localStorage.getItem(k)||''; }
+function ls(k,v){
+  try{
+    if(v!==undefined){localStorage.setItem(k,v);return v;}
+    return localStorage.getItem(k)||'';
+  }catch(e){return '';}
+}
 
 let CFG = {
   apiUrl:  ls('sw_api')     || DEFAULT_API_URL,
@@ -727,7 +732,10 @@ function setStatus(ok,msg){
 // Load tabs sequentially to avoid Apps Script rate limits
 async function refreshAll(){
   if(!CFG.apiUrl){
-    setStatus(false,'Paste Apps Script Web App URL in ⚙️ Setup');
+    setStatus(false,'⚠️ Not connected — go to ⚙️ Setup tab to paste your API URL');
+    // Still allow UI to work — just skip data loading
+    document.getElementById('tStats').innerHTML='<div class="stat-card" style="grid-column:1/-1"><div class="stat-label" style="font-size:14px">⚙️ Not connected</div><div style="color:var(--muted);font-size:12px;margin-top:8px">Click the <strong style="color:var(--accent)">Setup</strong> tab in the nav bar → paste your Apps Script Web App URL → click Save & Connect</div></div>';
+    document.getElementById('tTable').innerHTML='';
     return;
   }
   setStatus(false,'Loading Daily Targets...');
@@ -1745,7 +1753,16 @@ window.addEventListener('load',()=>{
   renderFestivals();
   renderBday();
   renderBonus();
-  refreshAll(); // Auto-connects using DEFAULT_SHEET_ID
+  refreshAll();
+  // If no API URL saved or still using default, navigate to Setup automatically
+  if(!CFG.apiUrl || CFG.apiUrl.includes('AKfycbz459Xmb')) {
+    setTimeout(()=>{
+      // Find setup button and click it
+      const allBtns = document.querySelectorAll('.nav-tab');
+      const setupBtn = Array.from(allBtns).find(b=>b.textContent.includes('Setup'));
+      if(setupBtn) showPage('setup', setupBtn);
+    }, 200);
+  }
 });
 </script>
 </body>
