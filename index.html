@@ -169,6 +169,10 @@ input[type=text],input[type=date],input[type=number]{width:100%}
   <button class="nav-tab" onclick="showPage('bday',this)">🎂 Birthdays</button>
   <button class="nav-tab" onclick="showPage('festival',this)">🗓 Festivals</button>
   <button class="nav-tab" onclick="showPage('bonus',this)">🧧 Bonus Tracker</button>
+  <button class="nav-tab" onclick="showPage('intel',this)">📊 Intel</button>
+  <button class="nav-tab" onclick="showPage('priority',this)">🚨 Priority</button>
+  <button class="nav-tab" onclick="showPage('silver',this)">⬆️ Upgrades</button>
+  <button class="nav-tab" onclick="showPage('tierbens',this)">💎 Tier Benefits</button>
   <button class="nav-tab" onclick="showPage('setup',this)">⚙️ Setup</button>
 </div>
 
@@ -503,6 +507,82 @@ input[type=text],input[type=date],input[type=number]{width:100%}
   </div>
 </div>
 
+
+<!-- ═══ EXECUTIVE SUMMARY + VIP INTEL ══════════════════════════ -->
+<div class="page" id="page-intel">
+  <div class="stat-grid" id="exStats"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="panel" id="exPlatform"></div>
+    <div class="panel" id="exActions"></div>
+  </div>
+  <div class="panel" id="exKPI" style="margin-bottom:16px"></div>
+  <!-- VIP Intel full table -->
+  <div class="table-wrap">
+    <div class="table-header">
+      <span class="table-title">👑 VIP Intel — Full Member Analysis</span>
+      <div class="table-tools">
+        <input type="text" class="search-box" id="vipIntelSearch" placeholder="Search username..." oninput="renderVIPIntel()">
+        <select class="filter-select" id="vipIntelTier" onchange="renderVIPIntel()">
+          <option value="ALL">All Tiers</option>
+          <option value="DIAMOND">Diamond</option>
+          <option value="PLATINUM">Platinum</option>
+          <option value="GOLD">Gold</option>
+        </select>
+        <select class="filter-select" id="vipIntelPri" onchange="renderVIPIntel()">
+          <option value="ALL">All Priority</option>
+          <option value="P1">🔴 P1</option>
+          <option value="P2">🟠 P2</option>
+          <option value="Active">✅ Active</option>
+        </select>
+      </div>
+    </div>
+    <div id="vipIntelTable"><div class="loading"><div class="spinner"></div> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ═══ PRIORITY CONTACTS ════════════════════════════════════ -->
+<div class="page" id="page-priority">
+  <div class="stat-grid" id="priStats"></div>
+  <div class="table-wrap">
+    <div class="table-header">
+      <span class="table-title">🚨 Priority Contact List</span>
+      <div class="table-tools">
+        <select class="filter-select" id="priFilter" onchange="renderPriority()">
+          <option value="ALL">All Urgency</option>
+          <option value="P1">🔴 P1 — TODAY</option>
+          <option value="P2">🟠 P2 — This Week</option>
+          <option value="P3">🟡 P3 — This Week</option>
+        </select>
+        <select class="filter-select" id="priTierFilter" onchange="renderPriority()">
+          <option value="ALL">All Tiers</option>
+          <option value="DIAMOND">Diamond</option>
+          <option value="PLATINUM">Platinum</option>
+          <option value="GOLD">Gold</option>
+        </select>
+      </div>
+    </div>
+    <div id="priTable"><div class="loading"><div class="spinner"></div> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ═══ SILVER UPGRADES ═══════════════════════════════════════ -->
+<div class="page" id="page-silver">
+  <div class="stat-grid" id="silStats"></div>
+  <div class="table-wrap">
+    <div class="table-header">
+      <span class="table-title">⬆️ Silver → Gold Upgrade Targets</span>
+    </div>
+    <div id="silTable"><div class="loading"><div class="spinner"></div> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ═══ TIER BENEFITS ═════════════════════════════════════════ -->
+<div class="page" id="page-tierbens">
+  <div class="table-wrap" id="tierBenTable">
+    <div class="loading"><div class="spinner"></div> Loading...</div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <script>
@@ -696,6 +776,8 @@ async function refreshAll(){
 
   renderWALog(waLog);
   renderCampaigns();
+  // Load intelligence data in background
+  loadIntelligenceData();
 }
 
 function parseSheetData(rows){
@@ -1380,6 +1462,282 @@ function dl(content,filename){ const a=document.createElement('a'); a.href='data
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// INTELLIGENCE PAGES DATA
+// ══════════════════════════════════════════════════════════════
+let DATA_intel = [], DATA_priority = [], DATA_silver = [], DATA_tierbens = [], DATA_vipintel = [];
+
+async function loadIntelligenceData(){
+  const [ex, vip, pri, sil, tier] = await Promise.all([
+    apiGet('Executive_Summary'),
+    apiGet('VIP_Intel'),
+    apiGet('Priority_Contacts'),
+    apiGet('Silver_Upgrades'),
+    apiGet('Tier_Benefits'),
+  ]);
+  DATA_intel    = ex  || [];
+  DATA_vipintel = vip || [];
+  DATA_priority = pri || [];
+  DATA_silver   = sil || [];
+  DATA_tierbens = tier|| [];
+  renderExecutiveSummary();
+  renderVIPIntel();
+  renderPriority();
+  renderSilver();
+  renderTierBenefits();
+}
+
+// ── Executive Summary ─────────────────────────────────────────
+function renderExecutiveSummary(){
+  if(!DATA_intel||DATA_intel.length<3){
+    document.getElementById('exStats').innerHTML='<div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" style="font-size:14px;color:var(--muted)">Run 📊 Build Intelligence Report in Apps Script first</div></div>';
+    return;
+  }
+
+  // Find KPI rows by label
+  const rows = DATA_intel.slice(2);
+  const find = (label) => rows.find(r=>String(r[0]||'').includes(label));
+
+  const members   = find('Member Count');
+  const deposits  = find('Total Deposits (RM)');
+  const wl        = find('Win/Loss (House');
+  const actions   = rows.filter(r=>String(r[0]||'').trim().startsWith('  ')||String(r[0]||'').includes('Zero')||String(r[0]||'').includes('Net Winner')||String(r[0]||'').includes('Silver'));
+
+  document.getElementById('exStats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Total VIPs</div><div class="stat-value c-accent">${members?members[4]:'—'}</div><div class="stat-sub">G+P+D active</div></div>
+    <div class="stat-card"><div class="stat-label">VIP Total Deposits</div><div class="stat-value c-green" style="font-size:18px">${deposits?deposits[4]:'—'}</div></div>
+    <div class="stat-card"><div class="stat-label">House Win/Loss</div><div class="stat-value c-amber" style="font-size:18px">${wl?wl[4]:'—'}</div></div>
+    <div class="stat-card"><div class="stat-label">Platform VIP %</div><div class="stat-value c-purple">~49%</div><div class="stat-sub">of total W/L</div></div>`;
+
+  // Platform table
+  const tierRow = rows.find(r=>String(r[0]||'').includes('Metric'));
+  const dataRows = rows.filter(r=>['Member Count','Total Deposits','Avg Deposit','Win/Loss'].some(k=>String(r[0]||'').includes(k)));
+  document.getElementById('exPlatform').innerHTML=`
+    <h3>📊 Tier Performance</h3>
+    <table style="width:100%;font-size:12px">
+      <thead><tr><th style="text-align:left;padding:6px;color:var(--muted)">Metric</th><th style="padding:6px;color:var(--gold)">GOLD</th><th style="padding:6px;color:var(--plat)">PLATINUM</th><th style="padding:6px;color:var(--diamond)">DIAMOND</th><th style="padding:6px;color:var(--text)">TOTAL</th></tr></thead>
+      <tbody>${dataRows.map(r=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:6px;color:var(--muted)">${r[0]}</td>
+        <td style="padding:6px;text-align:center;color:var(--gold)">${r[1]||'—'}</td>
+        <td style="padding:6px;text-align:center;color:var(--plat)">${r[2]||'—'}</td>
+        <td style="padding:6px;text-align:center;color:var(--diamond)">${r[3]||'—'}</td>
+        <td style="padding:6px;text-align:center;font-weight:700">${r[4]||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+
+  // Action items
+  const actionRows = rows.filter(r=>['Zero-deposit','Net Winners','Silver upgrade'].some(k=>String(r[0]||'').includes(k)));
+  document.getElementById('exActions').innerHTML=`
+    <h3>🎯 Action Items Required</h3>
+    ${actionRows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px">${r[0]}</span>
+      <div style="text-align:right">
+        <div style="font-weight:700;color:var(--amber)">${r[4]||'—'}</div>
+        <div style="font-size:10px;color:var(--muted)">${r[5]||''}</div>
+      </div>
+    </div>`).join('')}`;
+
+  // KPI targets
+  const kpiRows = rows.filter(r=>['Daily VIP','Reply Rate','Retention','Churn Recovery'].some(k=>String(r[0]||'').includes(k)));
+  document.getElementById('exKPI').innerHTML=`
+    <h3>📈 KPI Targets</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      ${kpiRows.map(r=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${r[0]}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--accent)">${r[3]||'—'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${r[5]||'Set baseline'}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
+
+// ── VIP Intel Full Table ──────────────────────────────────────
+function renderVIPIntel(){
+  if(!DATA_vipintel||DATA_vipintel.length<3){
+    document.getElementById('vipIntelTable').innerHTML='<div class="empty"><p>Run 📊 Build Intelligence Report in Apps Script first, then refresh.</p></div>';
+    return;
+  }
+  const hIdx = findHeaderRow(DATA_vipintel,'username','tier','score')||findHeaderRow(DATA_vipintel,'username','deposit','tier');
+  const H = DATA_vipintel[hIdx];
+  const iUser=fc(H,'username'),iTier=fc(H,'tier'),iDep=fc(H,'total deposit','deposit'),
+        iWL=fc(H,'win','loss'),iDeps=fc(H,'# deposit','#dep'),iFreq=fc(H,'freq'),
+        iDays=fc(H,'days inactive','days'),iStatus=fc(H,'activity','status'),
+        iScore=fc(H,'vip score','score'),iPred=fc(H,'predicted'),iPri=fc(H,'action priority','priority'),
+        iPhone=fc(H,'phone');
+
+  const search = (document.getElementById('vipIntelSearch')||{}).value||'';
+  const tierF  = (document.getElementById('vipIntelTier')||{}).value||'ALL';
+  const priF   = (document.getElementById('vipIntelPri')||{}).value||'ALL';
+
+  let data = DATA_vipintel.slice(hIdx+1).filter(r=>r[iUser]&&String(r[iUser]).trim());
+  if(search) data = data.filter(r=>String(r[iUser]).toLowerCase().includes(search.toLowerCase()));
+  if(tierF!=='ALL') data = data.filter(r=>matchTier(r[iTier],tierF));
+  if(priF!=='ALL') data = data.filter(r=>String(r[iPri]||'').includes(priF));
+
+  document.getElementById('vipIntelTable').innerHTML=`
+    <div style="padding:8px 12px;font-size:11px;color:var(--muted)">Showing ${data.length} of ${DATA_vipintel.length-hIdx-1} VIPs</div>
+    <div style="overflow-x:auto"><table>
+    <thead><tr>
+      <th>#</th><th>Username</th><th>Tier</th><th>Total Dep</th><th>Win/Loss</th>
+      <th>#Deps</th><th>Freq</th><th>Days Inactive</th><th>Status</th>
+      <th>VIP Score</th><th>Predicted%</th><th>Action Priority</th><th>Phone</th>
+    </tr></thead>
+    <tbody>${data.map((r,i)=>{
+      const pri=String(r[iPri]||'');
+      const rowBg=pri.includes('P1')?'rgba(248,81,73,.08)':pri.includes('P2')?'rgba(210,153,34,.08)':'';
+      const score=typeof r[iScore]==='number'?r[iScore]:parseFloat(r[iScore])||0;
+      const sBg=score>=85?'var(--green)':score>=70?'var(--amber)':score>=50?'#e65100':'var(--red)';
+      return\`<tr style="background:\${rowBg}">
+        <td style="color:var(--muted)">\${i+1}</td>
+        <td style="font-weight:700">\${r[iUser]||'—'}</td>
+        <td>\${tierBadge(r[iTier])}</td>
+        <td style="font-size:11px">\${rmFmt(r[iDep])}</td>
+        <td>\${wlFmt(r[iWL])}</td>
+        <td style="text-align:center">\${r[iDeps]||'—'}</td>
+        <td style="font-size:11px;color:var(--muted)">\${r[iFreq]||'—'}</td>
+        <td style="text-align:center">\${r[iDays]!==undefined&&r[iDays]!==''?r[iDays]+'d':'—'}</td>
+        <td style="font-size:11px">\${r[iStatus]||'—'}</td>
+        <td><span style="background:\${sBg};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">\${score||'—'}</span></td>
+        <td style="text-align:center;font-size:11px">\${r[iPred]||'—'}%</td>
+        <td><span class="badge \${pri.includes('P1')?'badge-red':pri.includes('P2')?'badge-amber':pri.includes('Active')?'badge-green':'badge-muted'}" style="font-size:10px">\${pri}</span></td>
+        <td style="font-size:11px;color:var(--accent)">\${r[iPhone]||'—'}</td>
+      </tr>\`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── Priority Contact List ─────────────────────────────────────
+function renderPriority(){
+  if(!DATA_priority||DATA_priority.length<3){
+    document.getElementById('priTable').innerHTML='<div class="empty"><p>Run 📊 Build Intelligence Report in Apps Script first</p></div>';
+    document.getElementById('priStats').innerHTML='';
+    return;
+  }
+  const hIdx = findHeaderRow(DATA_priority,'username','urgency','tier');
+  const H = DATA_priority[hIdx];
+  const iRank=fc(H,'rank'),iUser=fc(H,'username'),iTier=fc(H,'tier'),
+        iReason=fc(H,'reason'),iDep=fc(H,'dep','deposit'),iWL=fc(H,'win','loss'),
+        iDeps=fc(H,'dep','#'),iPhone=fc(H,'phone'),iUrg=fc(H,'urgency'),
+        iAct=fc(H,'action','script','suggested'),iStatus=fc(H,'status');
+
+  const urgF = document.getElementById('priFilter').value;
+  const tierF = document.getElementById('priTierFilter').value;
+  let data = DATA_priority.slice(hIdx+1).filter(r=>r[iUser]&&String(r[iUser]).trim());
+  if(urgF!=='ALL') data = data.filter(r=>String(r[iUrg]||'').includes(urgF));
+  if(tierF!=='ALL') data = data.filter(r=>matchTier(r[iTier],tierF));
+
+  const p1=data.filter(r=>String(r[iUrg]||'').includes('P1')).length;
+  const p2=data.filter(r=>String(r[iUrg]||'').includes('P2')).length;
+  document.getElementById('priStats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Total Priority</div><div class="stat-value c-red">${data.length}</div></div>
+    <div class="stat-card"><div class="stat-label">🔴 P1 — TODAY</div><div class="stat-value c-red">${p1}</div></div>
+    <div class="stat-card"><div class="stat-label">🟠 P2 — This Week</div><div class="stat-value c-amber">${p2}</div></div>
+    <div class="stat-card"><div class="stat-label">🟡 Others</div><div class="stat-value c-amber">${data.length-p1-p2}</div></div>`;
+
+  document.getElementById('priTable').innerHTML=`<div style="overflow-x:auto"><table>
+    <thead><tr><th>#</th><th>Username</th><th>Tier</th><th>Reason</th><th>Total Dep</th><th>Win/Loss</th><th>#Deps</th><th>Phone</th><th>Urgency</th><th>Action</th><th>Status</th></tr></thead>
+    <tbody>${data.map((r,i)=>{
+      const urg=String(r[iUrg]||'');
+      const urgBg=urg.includes('P1')?'rgba(248,81,73,.12)':urg.includes('P2')?'rgba(210,153,34,.12)':'rgba(63,185,80,.06)';
+      return`<tr style="background:${urgBg}">
+        <td style="color:var(--muted)">${i+1}</td>
+        <td style="font-weight:700">${r[iUser]||'—'}</td>
+        <td>${tierBadge(r[iTier])}</td>
+        <td style="font-size:11px;max-width:200px">${r[iReason]||'—'}</td>
+        <td style="font-size:11px">${rmFmt(r[iDep])}</td>
+        <td>${wlFmt(r[iWL])}</td>
+        <td style="text-align:center">${r[iDeps]||'—'}</td>
+        <td style="font-size:11px;color:var(--accent)">${r[iPhone]||'—'}</td>
+        <td><span class="badge ${urg.includes('P1')?'badge-red':urg.includes('P2')?'badge-amber':'badge-green'}" style="font-size:10px">${urg}</span></td>
+        <td style="font-size:11px;color:var(--muted);max-width:200px">${r[iAct]||'—'}</td>
+        <td style="font-size:11px">${r[iStatus]||'⏳'}</td>
+      </tr>`;}).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── Silver Upgrades ───────────────────────────────────────────
+function renderSilver(){
+  if(!DATA_silver||DATA_silver.length<3){
+    document.getElementById('silTable').innerHTML='<div class="empty"><p>Run 📊 Build Intelligence Report in Apps Script first</p></div>';
+    document.getElementById('silStats').innerHTML='';
+    return;
+  }
+  const hIdx = findHeaderRow(DATA_silver,'username','deposit','tier');
+  const H = DATA_silver[hIdx];
+  const iUser=fc(H,'username'),iTier=fc(H,'tier','current'),iDep=fc(H,'deposit','dep'),
+        iDeps=fc(H,'#dep','deposits'),iWL=fc(H,'win','loss'),iPhone=fc(H,'phone'),
+        iBonus=fc(H,'bonus','transfer'),iStatus=fc(H,'status');
+
+  const data = DATA_silver.slice(hIdx+1).filter(r=>r[iUser]&&String(r[iUser]).trim());
+  document.getElementById('silStats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Upgrade Targets</div><div class="stat-value c-amber">${data.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Potential Revenue</div><div class="stat-value c-green" style="font-size:16px">RM ${Math.round(data.reduce((s,r)=>{const d=typeof r[iDep]==='number'?r[iDep]:parseFloat(r[iDep])||0;return s+d;},0)).toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Deposits</div><div class="stat-value c-accent">${data.length?Math.round(data.reduce((s,r)=>{const d=typeof r[iDeps]==='number'?r[iDeps]:parseFloat(r[iDeps])||0;return s+d;},0)/data.length):0}</div></div>
+    <div class="stat-card"><div class="stat-label">Transfer Bonus</div><div class="stat-value" style="font-size:16px;color:var(--gold)">MYR 888 each</div></div>`;
+
+  document.getElementById('silTable').innerHTML=`<div style="overflow-x:auto"><table>
+    <thead><tr><th>#</th><th>Username</th><th>Current Tier</th><th>Total Dep</th><th>#Deps</th><th>Win/Loss</th><th>Phone</th><th>Transfer Bonus</th><th>Status</th></tr></thead>
+    <tbody>${data.map((r,i)=>`<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:700">${r[iUser]||'—'}</td>
+      <td>${tierBadge(r[iTier])}</td>
+      <td style="font-weight:700;color:var(--green)">${rmFmt(r[iDep])}</td>
+      <td style="text-align:center">${r[iDeps]||'—'}</td>
+      <td>${wlFmt(r[iWL])}</td>
+      <td style="font-size:11px;color:var(--accent)">${r[iPhone]||'—'}</td>
+      <td style="font-size:11px;color:var(--gold)">${r[iBonus]||'MYR 888'}</td>
+      <td><span class="badge badge-amber">${r[iStatus]||'⏳ Pending'}</span></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── Tier Benefits ─────────────────────────────────────────────
+function renderTierBenefits(){
+  if(!DATA_tierbens||DATA_tierbens.length<3){
+    document.getElementById('tierBenTable').innerHTML='<div class="empty"><p>Run 📊 Build Intelligence Report in Apps Script first</p></div>';
+    return;
+  }
+  const TIER_COLORS = {
+    BRONZE:'#CD7F32',SILVER:'#C0C0C0',GOLD:'#FFD700',
+    PLATINUM:'#E5E4E2',DIAMOND:'#B9F2FF',BLACK:'#2D2D2D'
+  };
+  const TIER_TEXT = {
+    BRONZE:'#fff',SILVER:'#000',GOLD:'#000',
+    PLATINUM:'#37474F',DIAMOND:'#0D47A1',BLACK:'#fff'
+  };
+
+  // Find header row with tier names
+  let hRow = DATA_tierbens.find(r=>r.some(v=>String(v||'').toUpperCase()==='GOLD'));
+  const tiers = hRow ? hRow.filter(v=>v).slice(1) : ['BRONZE','SILVER','GOLD','PLATINUM','DIAMOND','BLACK'];
+
+  const rows = DATA_tierbens.filter(r=>r[0]&&String(r[0]).trim()&&!String(r[0]).includes('SUREWIN')&&!String(r[0]).includes('Benefit'));
+
+  document.getElementById('tierBenTable').innerHTML=`
+    <div class="table-header"><span class="table-title">💎 SureWin VIP Tier Benefits</span></div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr>
+        <th style="text-align:left;min-width:180px">Benefit</th>
+        ${tiers.map(t=>`<th style="background:${TIER_COLORS[String(t).toUpperCase()]||'var(--surface2)'};color:${TIER_TEXT[String(t).toUpperCase()]||'var(--text)'};min-width:120px">${t}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rows.map(r=>{
+        const isSection = String(r[0]).startsWith('—');
+        if(isSection) return`<tr style="background:rgba(88,166,255,.08)">
+          <td colspan="${tiers.length+1}" style="padding:8px 11px;font-weight:700;font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:1px">${String(r[0]).replace(/—/g,'').trim()}</td>
+        </tr>`;
+        return`<tr>
+          <td style="font-size:12px;color:var(--muted);padding:7px 11px">${r[0]}</td>
+          ${tiers.map((_,i)=>{
+            const val=String(r[i+1]||'—');
+            const isCheck=val==='✅';
+            const isDash=val==='—'||val==='';
+            return`<td style="text-align:center;font-size:11px;${isCheck?'color:var(--green);font-size:15px':isDash?'color:var(--border)':'color:var(--text)'}">${isCheck?'✅':isDash?'—':val}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
 window.addEventListener('load',()=>{
   loadCfgUI();
   initIntents();
